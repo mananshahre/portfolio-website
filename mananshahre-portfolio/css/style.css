@@ -759,3 +759,236 @@ a:focus-visible, button:focus-visible, summary:focus-visible { outline: 2px soli
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition: none !important; scroll-behavior: auto !important; }
 }
+
+/* Blog section */
+.banner-blog { background-image: url("../assets/images/photo-books-michelin.jpg"); }
+
+.post-list {
+  display: grid;
+  gap: 1.5rem;
+  max-width: 760px;
+  margin: 1.5rem 0 3rem;
+}
+.post-card {
+  background: var(--space-2);
+  border: 2px solid rgba(186, 162, 120, 0.3);
+  border-radius: var(--radius);
+  padding: 1.5rem 1.75rem;
+  transition: transform 0.2s, border-color 0.2s;
+}
+.post-card:nth-child(odd):hover { transform: rotate(-1deg) translateY(-6px); border-color: var(--link); }
+.post-card:nth-child(even):hover { transform: rotate(1deg) translateY(-6px); border-color: var(--hover); }
+.post-card h3 { margin: 0.25rem 0 0.5rem; font-size: 1.6rem; }
+.post-card h3 a { color: var(--text); text-decoration: none; }
+.post-card h3 a:hover { color: var(--gold); }
+.post-card p { color: var(--dim); }
+.post-more { margin: 0; font-weight: 700; }
+
+.post-meta {
+  color: var(--link);
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 0.8rem;
+  margin: 0;
+}
+
+/* Single post page */
+.article-body {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 3.5rem 1.5rem 1rem;
+}
+.article-title {
+  font-size: 3rem;
+  margin: 0.4rem 0 1.75rem;
+}
+.article-body > p { font-size: 1.12rem; margin-bottom: 1.25rem; }
+.article-note {
+  background: var(--space-2);
+  border-left: 6px solid var(--link);
+  border-radius: var(--radius);
+  padding: 1rem 1.25rem;
+  font-family: var(--font-serif);
+  font-size: 1.35rem !important;
+  color: var(--gold);
+}
+.article-quote {
+  margin: 2rem 0;
+  padding: 1.25rem 1.5rem;
+  border-left: 6px solid var(--hover);
+  background: var(--space-2);
+  border-radius: var(--radius);
+  font-family: var(--font-serif);
+  font-size: 1.7rem;
+}
+.article-quote p { margin: 0; }
+.voice-note-chip {
+  margin: 2rem 0;
+  padding: 1.25rem 1.5rem;
+  border: 2px dashed rgba(186, 162, 120, 0.5);
+  border-radius: var(--radius);
+}
+.voice-note-label {
+  color: var(--link);
+  font-weight: 800;
+  margin: 0 0 0.4rem;
+}
+.voice-note-chip p:last-child { margin: 0; color: var(--dim); }
+.article-end {
+  font-family: var(--font-serif);
+  font-size: 1.5rem !important;
+  color: var(--gold);
+  margin-top: 2.5rem;
+}
+
+@media (max-width: 720px) {
+  .article-title { font-size: 2.2rem; }
+}
+
+/* Writing room (private editor) */
+.write-banner {
+  padding: 3rem var(--pad) 2rem;
+  border-bottom: 1px solid rgba(186, 162, 120, 0.35);
+}
+.write-banner h2 { font-size: 3rem; margin: 0.3rem 0; }
+.write-banner-sub { color: var(--gold); font-weight: 700; margin: 0; }
+
+.write-layout {
+  display: grid;
+  grid-template-columns: 1fr 340px;
+  gap: 2rem;
+  padding: 2.5rem var(--pad) 3rem;
+}
+@media (max-width: 860px) {
+  .write-layout { grid-template-columns: 1fr; }
+}
+
+.write-compose {
+  background: var(--space-2);
+  border: 2px solid rgba(186, 162, 120, 0.3);
+  border-radius: var(--radius);
+  padding: 1.5rem 1.75rem;
+}
+.write-toolbar {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-bottom: 1.25rem;
+}
+.write-toolbar button {
+  background: transparent;
+  color: var(--link);
+  border: 1.5px solid rgba(186, 162, 120, 0.45);
+  border-radius: 10px;
+  padding: 0.35rem 0.8rem;
+  font-family: var(--font-main);
+  font-weight: 700;
+  font-size: 0.95rem;
+  cursor: pointer;
+}
+.write-toolbar button:hover { border-color: var(--link); color: var(--gold); }
+.write-field-label {
+  color: var(--link);
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 0.75rem;
+  margin: 1rem 0 0.35rem;
+}
+.write-field {
+  border: 1.5px solid rgba(186, 162, 120, 0.35);
+  border-radius: 12px;
+  padding: 0.8rem 1rem;
+  color: var(--text);
+}
+.write-title-field { font-weight: 800; font-size: 1.15rem; }
+.write-body-field {
+  min-height: 220px;
+  color: var(--dim);
+  line-height: 1.7;
+}
+.write-actions {
+  display: flex;
+  gap: 0.75rem;
+  margin-top: 1.5rem;
+  flex-wrap: wrap;
+}
+.write-btn {
+  border-radius: 999px;
+  padding: 0.7rem 1.6rem;
+  font-family: var(--font-main);
+  font-weight: 800;
+  font-size: 1rem;
+  cursor: pointer;
+  border: 2px solid transparent;
+}
+.write-btn-draft {
+  background: transparent;
+  color: var(--link);
+  border-color: rgba(186, 162, 120, 0.5);
+}
+.write-btn-publish {
+  background: var(--grad-warm);
+  color: #11141D;
+}
+.write-hint { color: var(--dim); font-size: 0.9rem; margin: 0.9rem 0 0; }
+.write-hint-audio { color: var(--gold); }
+
+.write-panel {
+  background: var(--space-2);
+  border: 2px solid rgba(186, 162, 120, 0.3);
+  border-radius: var(--radius);
+  padding: 1.25rem 1.5rem;
+  margin-bottom: 1.5rem;
+}
+.write-panel h3 { margin: 0; }
+.write-panel-sub { color: var(--dim); font-size: 0.85rem; margin: 0.2rem 0 0.8rem; }
+.write-list { list-style: none; margin: 0; padding: 0; }
+.write-list li {
+  padding: 0.6rem 0;
+  border-top: 1px solid rgba(186, 162, 120, 0.25);
+  font-weight: 700;
+}
+.write-list li span {
+  display: block;
+  color: var(--dim);
+  font-weight: 400;
+  font-size: 0.8rem;
+}
+
+/* Writing room form elements */
+.write-input, .write-textarea {
+  width: 100%;
+  box-sizing: border-box;
+  background: transparent;
+  border: 1.5px solid rgba(186, 162, 120, 0.35);
+  border-radius: 12px;
+  padding: 0.8rem 1rem;
+  color: var(--text);
+  font-family: var(--font-main);
+  font-size: 1.05rem;
+}
+.write-input:focus, .write-textarea:focus { outline: none; border-color: var(--link); }
+.write-input { font-weight: 800; font-size: 1.15rem; }
+.write-textarea { min-height: 220px; line-height: 1.7; resize: vertical; }
+.write-preview {
+  border: 1.5px dashed rgba(186, 162, 120, 0.35);
+  border-radius: 12px;
+  padding: 0.8rem 1rem;
+  min-height: 80px;
+}
+.write-preview p { color: var(--dim); }
+.write-row-actions { float: right; }
+.write-row-actions a { font-size: 0.8rem; font-weight: 400; margin-left: 0.6rem; }
+
+/* Keep private editor panels truly hidden, including grid layouts. */
+[hidden] { display: none !important; }
+.write-compose, .write-side { min-width: 0; }
+.write-preview, .write-list { overflow-wrap: anywhere; }
+.write-btn:disabled { opacity: .6; cursor: wait; }
+@media (max-width: 480px) {
+  .write-banner h2 { font-size: 2.25rem; }
+  .write-compose { padding: 1rem; }
+  .write-banner { padding-top: 2rem; }
+}

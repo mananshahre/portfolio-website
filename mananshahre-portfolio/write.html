@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Write | Manan Shah | In Pursuit</title>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&family=Instrument+Serif:ital@0;1&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+<link rel="icon" type="image/png" href="../favicon.png">
+</head>
+<body id="top">
+
+<header class="site-header">
+  <nav class="navbar">
+    <a href="index.html" class="nav-logo">
+      <img src="assets/images/ms-logo-light.png" alt="logo of Manan Shah" width="44">
+    </a>
+    <ul class="nav-links">
+      <li><a href="blog.html">&#8592; Back to the blog</a></li>
+    </ul>
+  </nav>
+</header>
+
+<main>
+
+<section class="write-banner">
+  <p class="post-meta">Private writing room</p>
+  <h2>YOUR WRITING ROOM.</h2>
+  <p class="write-banner-sub" id="who">Checking your sign-in&hellip;</p>
+<button type="button" class="write-btn write-btn-draft" id="signout" hidden>Sign out</button>
+</section>
+
+<!-- SIGNED OUT -->
+<section class="write-layout" id="gate" hidden>
+  <div class="write-compose">
+    <h3>Sign in to write</h3>
+    <p style="color:var(--dim)">This page is protected by your Google account. Only your signed-in account can see drafts or prepare posts for publishing. The page URL itself is not a lock.</p>
+    <div class="write-actions">
+      <button type="button" class="write-btn write-btn-publish" id="signin">Sign in with Google</button>
+    </div>
+    <p class="write-hint" id="gate-error"></p>
+  </div>
+</section>
+
+<!-- SIGNED IN -->
+<section class="write-layout" id="room" hidden>
+
+  <div class="write-compose">
+    <div class="write-actions"><button type="button" class="write-btn write-btn-draft" id="new-post">New post</button></div>
+    <div class="write-toolbar" id="toolbar">
+      <button type="button" data-md="bold"><strong>B</strong></button>
+      <button type="button" data-md="italic"><em>I</em></button>
+      <button type="button" data-md="quote">&#8220; Quote</button>
+      <button type="button" data-md="heading">Heading</button>
+      <button type="button" data-md="link">Link</button>
+    </div>
+    <p class="write-field-label">Title</p>
+    <input type="text" id="f-title" class="write-input" maxlength="140" placeholder="Your title goes here">
+    <p class="write-field-label">Post</p>
+    <textarea id="f-body" maxlength="100000" class="write-textarea" rows="12" placeholder="Start writing here, the way you would tell a friend."></textarea>
+    <p class="write-field-label">Preview</p>
+    <div id="preview" class="write-preview"><p style="color:var(--dim)">Nothing yet.</p></div>
+    <div class="write-actions">
+      <button type="button" class="write-btn write-btn-draft" id="save-draft">Save draft</button>
+      <button type="button" class="write-btn write-btn-publish" id="publish">Publish to the blog &#8594;</button>
+    </div>
+    <p class="write-hint" id="status-line">Publishing adds the post to your website after the next sync, usually about half an hour but sometimes longer. Nothing appears until you press it.</p>
+    <p class="write-hint write-hint-audio">Voice memo? Send it on WhatsApp like you already do. It is attached to a post only when you ask for it.</p>
+  </div>
+
+  <aside class="write-side">
+    <div class="write-panel">
+      <h3>Your drafts</h3>
+      <p class="write-panel-sub">Visible only to you.</p>
+      <ul class="write-list" id="drafts"><li style="color:var(--dim)">Loading&hellip;</li></ul>
+    </div>
+    <div class="write-panel">
+      <h3>Published</h3>
+      <p class="write-panel-sub">Queued for the next website sync. Removal also needs a sync.</p>
+      <ul class="write-list" id="published"><li style="color:var(--dim)">Loading&hellip;</li></ul>
+    </div>
+  </aside>
+
+</section>
+
+</main>
+
+<footer class="site-footer">
+  <img src="assets/images/ms-logo-light.png" alt="logo of Manan Shah" width="64">
+  <p class="footer-mark"><strong>IN PURSUIT.</strong></p>
+  <p>&copy; 2026 Manan Shah. Photos are from my own collection.</p>
+</footer>
+
+<script type="module">
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js';
+import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js';
+import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, query, orderBy, onSnapshot, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
+
+const firebaseConfig = {
+  apiKey: "AIzaSyBwr-CipPH5gpPl53EEQpqGzvP8xpq7xeA",
+  authDomain: "becoming-manan-blog.firebaseapp.com",
+  projectId: "becoming-manan-blog",
+  appId: "1:963513023822:web:fc36d10513f4b2db66f21f"
+};
+const OWNER = "mananshahre@gmail.com";
+
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+const postsCol = collection(db, 'posts');
+
+const $ = id => document.getElementById(id);
+const gate = $('gate'), room = $('room'), who = $('who');
+let currentId = null, currentStatus = 'draft', currentPublishedAt = null, stopLists = null, dirty = false;
+bodyDirtySetup();
+function bodyDirtySetup(){ ['f-title','f-body'].forEach(id => $(id).addEventListener('input', () => { dirty = true; })); }
+window.addEventListener('beforeunload', e => { if(dirty){ e.preventDefault(); e.returnValue = ''; } });
+
+// --- tiny markdown subset, escaped first (must match tools/sync_posts.py) ---
+function esc(s){ return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+function inline(s){
+  return esc(s)
+    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*([^*]+)\*/g, '<em>$1</em>')
+    .replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, '<a href="$2">$1</a>');
+}
+function render(src){
+  return src.split(/\n\s*\n/).map(block => {
+    const b = block.trim();
+    if (!b) return '';
+    if (b.startsWith('## ')) return '<h3>' + inline(b.slice(3)) + '</h3>';
+    if (b.startsWith('&gt; ') || b.startsWith('> ')) return '<blockquote class="article-quote"><p>' + inline(b.replace(/^>\s*/, '')) + '</p></blockquote>';
+    return '<p>' + inline(b).replace(/\n/g, '<br>') + '</p>';
+  }).join('\n');
+}
+
+const titleEl = $('f-title'), bodyEl = $('f-body');
+function refreshPreview(){ $('preview').innerHTML = render(bodyEl.value) || '<p style="color:var(--dim)">Nothing yet.</p>'; }
+bodyEl.addEventListener('input', refreshPreview);
+
+$('toolbar').addEventListener('click', e => {
+  const btn = e.target.closest('button[data-md]');
+  if (!btn) return;
+  const mode = btn.dataset.md, el = bodyEl;
+  const s = el.selectionStart, t = el.selectionEnd, sel = el.value.slice(s, t) || 'text';
+  let wrap;
+  if (mode === 'bold') wrap = '**' + sel + '**';
+  else if (mode === 'italic') wrap = '*' + sel + '*';
+  else if (mode === 'quote') wrap = '> ' + sel;
+  else if (mode === 'heading') wrap = '## ' + sel;
+  else wrap = '[' + sel + '](https://)';
+  el.setRangeText(wrap, s, t, 'end');
+  el.focus();
+  dirty=true;
+  refreshPreview();
+});
+
+
+function confirmAction(message){
+  return new Promise(resolve => {
+    const dialog = document.createElement('dialog');
+    dialog.setAttribute('aria-label','Confirm action');
+    dialog.style.cssText='max-width:420px;width:calc(100% - 48px);padding:24px;border:1px solid #cdb878;border-radius:16px;background:#172030;color:#f5f5f5;font:16px/1.6 Arial,sans-serif;';
+    const text = document.createElement('p'); text.textContent=message;
+    const actions = document.createElement('div'); actions.style.cssText='display:flex;gap:12px;justify-content:flex-end;margin-top:20px;';
+    const no = document.createElement('button'); no.textContent='Cancel';
+    const yes = document.createElement('button'); yes.textContent='Confirm';
+    for(const b of [no,yes]) b.style.cssText='padding:10px 18px;border:1px solid #cdb878;border-radius:20px;background:#e4ca8b;color:#111;font:inherit;cursor:pointer;';
+    const finish = value => {dialog.close();dialog.remove();resolve(value);};
+    no.onclick=()=>finish(false);yes.onclick=()=>finish(true);
+    dialog.oncancel=e=>{e.preventDefault();finish(false);};
+    actions.append(no,yes);dialog.append(text,actions);document.body.append(dialog);dialog.showModal();no.focus();
+  });
+}
+
+function status(msg){ $('status-line').textContent = msg; }
+
+async function loadInto(id, data){
+  if (dirty && !await confirmAction('Discard your unsaved changes?')) return;
+  currentId = id; currentStatus = data.status || 'draft'; currentPublishedAt = data.publishedAt || null; dirty = false;
+  $('save-draft').textContent = currentStatus === 'published' ? 'Save changes' : 'Save draft';
+  titleEl.value = data.title || '';
+  bodyEl.value = data.body || '';
+  refreshPreview();
+  window.scrollTo({top: 0, behavior: 'smooth'});
+}
+
+function rowFor(id, data, isPub){
+  const li = document.createElement('li');
+  const a = document.createElement('a');
+  a.href = '#'; a.textContent = data.title || '(untitled)';
+  a.onclick = ev => { ev.preventDefault(); loadInto(id, data); };
+  li.appendChild(a);
+  const meta = document.createElement('span');
+  const when = (isPub ? data.publishedAt : data.updatedAt);
+  meta.textContent = when && when.toDate ? when.toDate().toLocaleString('en-IN', {day:'numeric', month:'short', hour:'numeric', minute:'2-digit'}) : '';
+  li.appendChild(meta);
+  const acts = document.createElement('span');
+  acts.className = 'write-row-actions';
+  if (isPub) {
+    const un = document.createElement('a'); un.href = '#'; un.textContent = 'Unpublish';
+    un.onclick = async ev => { ev.preventDefault(); if(!await confirmAction('Remove this post from the blog at the next sync?')) return; await runAction(async () => { await updateDoc(doc(db,'posts',id), {status:'draft', updatedAt: serverTimestamp()}); if(currentId===id){ currentStatus='draft'; $('save-draft').textContent='Save draft'; } status('Unpublished in the writing room. The website copy is removed at the next sync.'); }); };
+    acts.appendChild(un);
+  }
+  const del = document.createElement('a'); del.href = '#'; del.textContent = 'Delete';
+  del.onclick = async ev => { ev.preventDefault(); if (await confirmAction('Delete this post permanently? The website copy is removed at the next sync.')) { await runAction(async () => { await deleteDoc(doc(db,'posts',id)); if (currentId===id){ currentId=null; titleEl.value=''; bodyEl.value=''; refreshPreview(); currentStatus='draft'; currentPublishedAt=null; dirty=false; $('save-draft').textContent='Save draft'; } status('Deleted. Any website copy is removed at the next sync.'); }); } };
+  acts.appendChild(del);
+  li.appendChild(acts);
+  return li;
+}
+
+function startLists(){
+  const q = query(postsCol, orderBy('updatedAt', 'desc'));
+  if(stopLists) stopLists();
+  stopLists = onSnapshot(q, snap => {
+    const drafts = $('drafts'), pubs = $('published');
+    drafts.innerHTML = ''; pubs.innerHTML = '';
+    let nd = 0, np = 0;
+    snap.forEach(d => {
+      const data = d.data();
+      if (data.status === 'published') { pubs.appendChild(rowFor(d.id, data, true)); np++; }
+      else { drafts.appendChild(rowFor(d.id, data, false)); nd++; }
+    });
+    if (!nd) drafts.innerHTML = '<li style="color:var(--dim)">No drafts yet.</li>';
+    if (!np) pubs.innerHTML = '<li style="color:var(--dim)">Nothing published yet.</li>';
+  }, e => status('Could not load posts: ' + (e.code || 'connection error') + '. Try signing in again.'));
+}
+
+async function save(status_) {
+  const data = {
+    title: titleEl.value.trim() || '(untitled)',
+    body: bodyEl.value,
+    status: status_,
+    updatedAt: serverTimestamp()
+  };
+  if (status_ === 'published' && !currentPublishedAt) data.publishedAt = serverTimestamp();
+  if (currentId) {
+    await updateDoc(doc(db, 'posts', currentId), data);
+  } else {
+    data.createdAt = serverTimestamp();
+    const ref = await addDoc(postsCol, data);
+    currentId = ref.id;
+  }
+  currentStatus=status_; dirty=false; $('save-draft').textContent = status_ === 'published' ? 'Save changes' : 'Save draft';
+  if(data.publishedAt) currentPublishedAt=data.publishedAt;
+  return status_;
+}
+
+async function runAction(action){
+  const buttons = [...document.querySelectorAll('#room button')];
+  buttons.forEach(b => b.disabled = true);
+  try { await action(); } catch(e){ status('Not saved: ' + (e.code || 'connection error') + '. Your text is still here. Please try again.'); }
+  finally { buttons.forEach(b => b.disabled = false); }
+}
+$('new-post').onclick = async () => {
+  if(dirty && !await confirmAction('Discard your unsaved changes?')) return;
+  currentId=null; currentStatus='draft'; currentPublishedAt=null; dirty=false;
+  titleEl.value=''; bodyEl.value=''; refreshPreview(); $('save-draft').textContent='Save draft'; status('New post. Nothing is saved until you press Save draft.');
+};
+$('signout').onclick = async () => { if(dirty && !await confirmAction('Sign out and discard unsaved changes?')) return; dirty=false; await signOut(auth); };
+$('save-draft').onclick = () => runAction(async () => { status('Saving...'); await save(currentStatus); status(currentStatus === 'published' ? 'Changes saved for the next sync.' : 'Draft saved. Only you can see it.'); });
+$('publish').onclick = () => runAction(async () => {
+  if (!bodyEl.value.trim()) { status('Write something first.'); return; }
+  if (!await confirmAction('Prepare this post for the next website sync? It may take half an hour or longer to appear.')) return;
+  status('Saving for publication...');
+  await save('published');
+  status('Saved for publication. It appears after the next website sync, usually about half an hour but sometimes longer.');
+});
+
+$('signin').onclick = async () => {
+  try { await signInWithPopup(auth, new GoogleAuthProvider()); }
+  catch (e) { $('gate-error').textContent = 'Sign-in did not complete: ' + (e.code || e.message); }
+};
+
+onAuthStateChanged(auth, user => {
+  if (user && user.emailVerified && user.email === OWNER) {
+    who.textContent = 'Signed in as ' + user.email + '. Your drafts are private.';
+    gate.hidden = true; room.hidden = false; $('signout').hidden=false;
+    startLists();
+  } else {
+    if(stopLists){ stopLists(); stopLists=null; }
+    titleEl.value=''; bodyEl.value=''; currentId=null; currentStatus='draft'; currentPublishedAt=null; dirty=false; refreshPreview();
+    $('drafts').textContent=''; $('published').textContent=''; $('signout').hidden=true;
+    if (user) { signOut(auth); $('gate-error').textContent = 'This account (' + user.email + ') is not the blog owner. Switch Google accounts.'; }
+    who.textContent = 'Protected by your Google account.';
+    gate.hidden = false; room.hidden = true;
+  }
+});
+</script>
+
+</body>
+</html>
