@@ -10,6 +10,7 @@ paragraphs split on blank lines, '## ' heading, '> ' quote,
 **bold**, *italic*, [text](https://url). HTML is escaped first.
 """
 import json
+import base64
 import os
 import re
 import sys
@@ -68,6 +69,7 @@ def fetch_posts():
             "id": document["name"].rsplit("/", 1)[-1],
             "title": f.get("title", {}).get("stringValue", "(untitled)"),
             "body": f.get("body", {}).get("stringValue", ""),
+            "imagesJson": f.get("imagesJson", {}).get("stringValue", "{}"),
             "publishedAt": f.get("publishedAt", {}).get("timestampValue", ""),
         })
     posts.sort(key=lambda p: p["publishedAt"], reverse=True)
@@ -82,13 +84,37 @@ def inline(text):
     return s
 
 
-def render(src):
+def read_images(value):
+    try:
+        obj = json.loads(value)
+        if not isinstance(obj, dict) or len(obj) > 4:
+            raise ValueError("Invalid image collection")
+        for key, photo in obj.items():
+            data = photo.get("data", "")
+            if not re.fullmatch(r"[A-Za-z0-9_-]+", key) or not re.fullmatch(r"data:image/jpeg;base64,[A-Za-z0-9+/]+={0,2}", data) or len(data) > 180000:
+                raise ValueError("Invalid photo")
+            raw = base64.b64decode(data.split(",",1)[1], validate=True)
+            if not raw.startswith(b"\xff\xd8\xff"):
+                raise ValueError("Invalid JPEG")
+        return obj
+    except (TypeError, ValueError, AttributeError):
+        raise ValueError("Invalid post images") from None
+
+def render(src, images=None):
+    images = images or {}
     out = []
     for block in re.split(r"\n\s*\n", src):
         b = block.strip()
         if not b:
             continue
-        if b.startswith("## "):
+        photo = re.fullmatch(r"!\[([^\]]*)\]\(image:([A-Za-z0-9_-]+)\)", b)
+        if photo:
+            item = images.get(photo[2])
+            if not item:
+                raise ValueError("Post references a missing image")
+            caption = escape(photo[1], quote=True)
+            out.append('<figure style="margin:24px 0"><img src="' + item["data"] + '" alt="' + caption + '" style="display:block;max-width:100%;height:auto;border-radius:8px"><figcaption style="color:var(--dim);font-size:.9em">' + caption + '</figcaption></figure>')
+        elif b.startswith("## "):
             out.append("  <h3>" + inline(b[3:]) + "</h3>")
         elif b.startswith("> "):
             out.append('  <blockquote class="article-quote">\n    <p>' + inline(b[2:]) + "</p>\n  </blockquote>")
@@ -133,10 +159,11 @@ def main():
         fname = f"post-{slug}.html"
         keep_pages.add(fname)
         date = fmt_date(p["publishedAt"])
-        values = {"TITLE": escape(p["title"]), "DATE": date, "BODY": render(p["body"])}
+        values = {"TITLE": escape(p["title"]), "DATE": date, "BODY": render(p["body"], read_images(p.get("imagesJson", "{}")))}
         page = re.sub(r"\{\{(TITLE|DATE|BODY)\}\}", lambda m: values[m[1]], template)
         pending_pages[fname] = page
-        excerpt = escape(re.sub(r"\s+", " ", re.sub(r"[*#>\[\]]", "", p["body"]))[:180].strip())
+        excerpt_body = re.sub(r"!\[[^\]]*\]\(image:[A-Za-z0-9_-]+\)", "", p["body"])
+        excerpt = escape(re.sub(r"\s+", " ", re.sub(r"[*#>\[\]]", "", excerpt_body))[:180].strip())
         cards.append(
             '    <article class="post-card">\n'
             f'      <p class="post-meta">{date}</p>\n'
