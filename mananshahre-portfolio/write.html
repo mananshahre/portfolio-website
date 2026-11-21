@@ -58,13 +58,20 @@
     <input type="text" id="f-title" class="write-input" maxlength="140" placeholder="Your title goes here">
     <p class="write-field-label">Post</p>
     <textarea id="f-body" maxlength="100000" class="write-textarea" rows="12" placeholder="Start writing here, the way you would tell a friend."></textarea>
+    <div class="write-image-tools">
+      <label class="write-btn write-btn-draft" for="image-files" style="display:inline-block;cursor:pointer">Add photos</label>
+      <input id="image-files" type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif" multiple style="display:block;max-width:100%;margin-top:12px">
+      <p class="write-hint">Up to 4 photos per post, resized for the web. Originals stay on your phone. Draft photos stay private until you Publish and run the website update. JPG, PNG or WebP work best; convert HEIC to JPG if your browser cannot open it.</p>
+      <div id="image-list"></div>
+    </div>
     <p class="write-field-label">Preview</p>
     <div id="preview" class="write-preview"><p style="color:var(--dim)">Nothing yet.</p></div>
     <div class="write-actions">
       <button type="button" class="write-btn write-btn-draft" id="save-draft">Save draft</button>
       <button type="button" class="write-btn write-btn-publish" id="publish">Publish to the blog &#8594;</button>
     </div>
-    <p class="write-hint" id="status-line">Publishing adds the post to your website after the next sync, usually about half an hour but sometimes longer. Nothing appears until you press it.</p>
+    <p class="write-hint" id="status-line">Publish saves the post as ready. Then use Run website update below, choose main and Run workflow. Wait for the green check and refresh your blog. Drafts stay private.</p>
+    <p class="write-hint"><a href="https://github.com/mananshahre/portfolio-website/actions/workflows/publish-website.yml" target="_blank" rel="noopener">Run website update on GitHub &#8599;</a></p>
     <p class="write-hint write-hint-audio">Voice memo? Send it on WhatsApp like you already do. It is attached to a post only when you ask for it.</p>
   </div>
 
@@ -76,7 +83,7 @@
     </div>
     <div class="write-panel">
       <h3>Published</h3>
-      <p class="write-panel-sub">Queued for the next website sync. Removal also needs a sync.</p>
+      <p class="write-panel-sub">Marked for publication. Run the website update to apply posts, edits or removals. This list is not a live-site confirmation.</p>
       <ul class="write-list" id="published"><li style="color:var(--dim)">Loading&hellip;</li></ul>
     </div>
   </aside>
@@ -111,6 +118,7 @@ const postsCol = collection(db, 'posts');
 
 const $ = id => document.getElementById(id);
 const gate = $('gate'), room = $('room'), who = $('who');
+let images = {};
 let currentId = null, currentStatus = 'draft', currentPublishedAt = null, stopLists = null, dirty = false;
 bodyDirtySetup();
 function bodyDirtySetup(){ ['f-title','f-body'].forEach(id => $(id).addEventListener('input', () => { dirty = true; })); }
@@ -124,10 +132,19 @@ function inline(s){
     .replace(/\*([^*]+)\*/g, '<em>$1</em>')
     .replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, '<a href="$2">$1</a>');
 }
+function imageBlock(b){
+  const m = /^!\[([^\]]*)\]\(image:([a-zA-Z0-9_-]+)\)$/.exec(b);
+  if(!m) return null;
+  const photo = images[m[2]];
+  if(!photo || !validPhoto(photo)) return '<p>[Photo not available]</p>';
+  return '<figure style="margin:24px 0"><img src="'+photo.data+'" alt="'+esc(m[1])+'" style="display:block;max-width:100%;height:auto;border-radius:8px"><figcaption style="color:var(--dim);font-size:.9em">'+esc(m[1])+'</figcaption></figure>';
+}
+function validPhoto(p){ return p && typeof p.data === 'string' && /^data:image\/jpeg;base64,[A-Za-z0-9+/]+={0,2}$/.test(p.data) && p.data.length <= 180000; }
 function render(src){
   return src.split(/\n\s*\n/).map(block => {
     const b = block.trim();
     if (!b) return '';
+    const photo = imageBlock(b); if(photo !== null) return photo;
     if (b.startsWith('## ')) return '<h3>' + inline(b.slice(3)) + '</h3>';
     if (b.startsWith('&gt; ') || b.startsWith('> ')) return '<blockquote class="article-quote"><p>' + inline(b.replace(/^>\s*/, '')) + '</p></blockquote>';
     return '<p>' + inline(b).replace(/\n/g, '<br>') + '</p>';
@@ -137,6 +154,69 @@ function render(src){
 const titleEl = $('f-title'), bodyEl = $('f-body');
 function refreshPreview(){ $('preview').innerHTML = render(bodyEl.value) || '<p style="color:var(--dim)">Nothing yet.</p>'; }
 bodyEl.addEventListener('input', refreshPreview);
+
+const byteSize = value => new TextEncoder().encode(value).length;
+function imagePayload(){ return JSON.stringify(images); }
+function checkSize(){
+  if(byteSize(JSON.stringify({title:titleEl.value,body:bodyEl.value,imagesJson:imagePayload()})) > 880000) throw Error('This post is too large. Remove a photo or shorten the text, then save again.');
+}
+function readPhotos(value){
+  try { const obj=JSON.parse(value || '{}'); if(!obj || Array.isArray(obj) || typeof obj!=='object')return {}; const pairs=Object.entries(obj); if(pairs.length>4) return {}; return Object.fromEntries(pairs.filter(([id,p])=>/^[a-zA-Z0-9_-]+$/.test(id)&&validPhoto(p))); }catch{return {};}
+}
+function insertPhoto(id){
+  const p=images[id]; if(!p)return;
+  const caption=(p.caption||'Photo').replace(/[\[\]\r\n]/g,' ');
+  const tag='\n\n!['+caption+'](image:'+id+')\n\n';
+  bodyEl.setRangeText(tag,bodyEl.selectionStart,bodyEl.selectionEnd,'end');
+  dirty=true;refreshPreview();bodyEl.focus();
+}
+function showPhotos(){
+  const list=$('image-list');list.replaceChildren();
+  for(const [id,p] of Object.entries(images)){
+    const row=document.createElement('div');row.style.cssText='border:1px solid #657080;padding:12px;margin:12px 0;border-radius:8px;';
+    const img=document.createElement('img');img.src=p.data;img.alt=p.caption||'Selected photo';img.style.cssText='max-width:150px;max-height:110px;display:block;margin-bottom:10px';
+    const label=document.createElement('label');label.textContent='Caption / description';label.htmlFor='caption-'+id;
+    const input=document.createElement('input');input.id='caption-'+id;input.type='text';input.maxLength=160;input.value=p.caption||'';input.className='write-input';input.style.cssText='display:block;width:100%;box-sizing:border-box;margin:6px 0 10px';
+    input.oninput=()=>{const old=(p.caption||'Photo').replace(/[\[\]\r\n]/g,' ');p.caption=input.value;const updated=(p.caption||'Photo').replace(/[\[\]\r\n]/g,' ');bodyEl.value=bodyEl.value.split('!['+old+'](image:'+id+')').join('!['+updated+'](image:'+id+')');dirty=true;refreshPreview();};
+    const insert=document.createElement('button');insert.type='button';insert.textContent='Insert at cursor';insert.className='write-btn write-btn-draft';insert.onclick=()=>insertPhoto(id);
+    const remove=document.createElement('button');remove.type='button';remove.textContent='Remove photo';remove.className='write-btn write-btn-draft';remove.style.marginLeft='8px';remove.onclick=()=>{delete images[id];bodyEl.value=bodyEl.value.replace(new RegExp('!\\[[^\\]]*\\]\\(image:'+id+'\\)','g'),'');dirty=true;showPhotos();refreshPreview();};
+    row.append(img,label,input,insert,remove);list.append(row);
+  }
+}
+async function preparePhoto(file){
+  if(file.size > 25*1024*1024)throw Error('That photo is over 25MB. Choose a smaller copy.');
+  const url=URL.createObjectURL(file);
+  try{
+    const img=new Image();img.src=url;await img.decode();
+    if(!img.naturalWidth || !img.naturalHeight)throw Error('No image dimensions');
+    if(img.naturalWidth*img.naturalHeight>60000000)throw Error('This photo has too many pixels. Choose a smaller copy.');
+    let scale=Math.min(1,1400/Math.max(img.naturalWidth,img.naturalHeight));
+    const canvas=document.createElement('canvas');const ctx=canvas.getContext('2d');
+    for(let attempt=0;attempt<5;attempt++){
+      canvas.width=Math.max(1,Math.round(img.naturalWidth*scale));canvas.height=Math.max(1,Math.round(img.naturalHeight*scale));
+      ctx.fillStyle='#ffffff';ctx.fillRect(0,0,canvas.width,canvas.height);ctx.drawImage(img,0,0,canvas.width,canvas.height);
+      const data=canvas.toDataURL('image/jpeg',Math.max(.5,.82-attempt*.06));
+      if(data.length <= 180000)return {data,caption:'',width:canvas.width,height:canvas.height};
+      scale*=.78;
+    }
+    throw Error('This photo is too detailed for the free photo limit. Choose a smaller copy.');
+  }finally{URL.revokeObjectURL(url);}
+}
+$('image-files').onchange=async e=>{
+  const files=[...e.target.files];e.target.value='';
+  if(Object.keys(images).length+files.length>4){status('Up to 4 photos per post. Remove one before adding more.');return;}
+  await runAction(async()=>{
+    for(const file of files){
+      status('Preparing photo...');let photo;
+      try{photo=await preparePhoto(file);}catch(err){status('Photo not added: '+(err.message.includes('photo')?err.message:'This format could not be opened. Try JPG, PNG or WebP.'));return;}
+      const id='img'+crypto.randomUUID().replaceAll('-','');images[id]=photo;
+      try{checkSize();}catch(err){delete images[id];status(err.message);return;}
+      insertPhoto(id);showPhotos();dirty=true;
+    }
+    status('Photos added to this post. Check the preview, then Save draft or Publish.');
+  });
+};
+
 
 $('toolbar').addEventListener('click', e => {
   const btn = e.target.closest('button[data-md]');
@@ -179,6 +259,7 @@ async function loadInto(id, data){
   if (dirty && !await confirmAction('Discard your unsaved changes?')) return;
   currentId = id; currentStatus = data.status || 'draft'; currentPublishedAt = data.publishedAt || null; dirty = false;
   $('save-draft').textContent = currentStatus === 'published' ? 'Save changes' : 'Save draft';
+  images=readPhotos(data.imagesJson);showPhotos();
   titleEl.value = data.title || '';
   bodyEl.value = data.body || '';
   refreshPreview();
@@ -199,11 +280,11 @@ function rowFor(id, data, isPub){
   acts.className = 'write-row-actions';
   if (isPub) {
     const un = document.createElement('a'); un.href = '#'; un.textContent = 'Unpublish';
-    un.onclick = async ev => { ev.preventDefault(); if(!await confirmAction('Remove this post from the blog at the next sync?')) return; await runAction(async () => { await updateDoc(doc(db,'posts',id), {status:'draft', updatedAt: serverTimestamp()}); if(currentId===id){ currentStatus='draft'; $('save-draft').textContent='Save draft'; } status('Unpublished in the writing room. The website copy is removed at the next sync.'); }); };
+    un.onclick = async ev => { ev.preventDefault(); if(!await confirmAction('Mark this post as a draft? Then run the website update to remove its website copy.')) return; await runAction(async () => { await updateDoc(doc(db,'posts',id), {status:'draft', updatedAt: serverTimestamp()}); if(currentId===id){ currentStatus='draft'; $('save-draft').textContent='Save draft'; } status('Moved to drafts. Run the website update to remove the website copy.'); }); };
     acts.appendChild(un);
   }
   const del = document.createElement('a'); del.href = '#'; del.textContent = 'Delete';
-  del.onclick = async ev => { ev.preventDefault(); if (await confirmAction('Delete this post permanently? The website copy is removed at the next sync.')) { await runAction(async () => { await deleteDoc(doc(db,'posts',id)); if (currentId===id){ currentId=null; titleEl.value=''; bodyEl.value=''; refreshPreview(); currentStatus='draft'; currentPublishedAt=null; dirty=false; $('save-draft').textContent='Save draft'; } status('Deleted. Any website copy is removed at the next sync.'); }); } };
+  del.onclick = async ev => { ev.preventDefault(); if (await confirmAction('Delete this post permanently? Then run the website update to remove any website copy.')) { await runAction(async () => { await deleteDoc(doc(db,'posts',id)); if (currentId===id){ currentId=null; images={};showPhotos();titleEl.value=''; bodyEl.value=''; refreshPreview(); currentStatus='draft'; currentPublishedAt=null; dirty=false; $('save-draft').textContent='Save draft'; } status('Deleted from the writing room. Run the website update to remove any website copy.'); }); } };
   acts.appendChild(del);
   li.appendChild(acts);
   return li;
@@ -223,13 +304,15 @@ function startLists(){
     });
     if (!nd) drafts.innerHTML = '<li style="color:var(--dim)">No drafts yet.</li>';
     if (!np) pubs.innerHTML = '<li style="color:var(--dim)">Nothing published yet.</li>';
-  }, e => status('Could not load posts: ' + (e.code || 'connection error') + '. Try signing in again.'));
+  }, e => status('Could not load posts: ' + (e.code || e.message || 'connection error') + '. Try signing in again.'));
 }
 
 async function save(status_) {
+  checkSize();
   const data = {
     title: titleEl.value.trim() || '(untitled)',
     body: bodyEl.value,
+    imagesJson: imagePayload(),
     status: status_,
     updatedAt: serverTimestamp()
   };
@@ -247,24 +330,24 @@ async function save(status_) {
 }
 
 async function runAction(action){
-  const buttons = [...document.querySelectorAll('#room button')];
+  const buttons = [...document.querySelectorAll('#room button, #image-files')];
   buttons.forEach(b => b.disabled = true);
-  try { await action(); } catch(e){ status('Not saved: ' + (e.code || 'connection error') + '. Your text is still here. Please try again.'); }
+  try { await action(); } catch(e){ status('Not saved: ' + (e.code || e.message || 'connection error') + '. Your text is still here. Please try again.'); }
   finally { buttons.forEach(b => b.disabled = false); }
 }
 $('new-post').onclick = async () => {
   if(dirty && !await confirmAction('Discard your unsaved changes?')) return;
   currentId=null; currentStatus='draft'; currentPublishedAt=null; dirty=false;
-  titleEl.value=''; bodyEl.value=''; refreshPreview(); $('save-draft').textContent='Save draft'; status('New post. Nothing is saved until you press Save draft.');
+  images={};showPhotos();titleEl.value=''; bodyEl.value=''; refreshPreview(); $('save-draft').textContent='Save draft'; status('New post. Nothing is saved until you press Save draft.');
 };
 $('signout').onclick = async () => { if(dirty && !await confirmAction('Sign out and discard unsaved changes?')) return; dirty=false; await signOut(auth); };
-$('save-draft').onclick = () => runAction(async () => { status('Saving...'); await save(currentStatus); status(currentStatus === 'published' ? 'Changes saved for the next sync.' : 'Draft saved. Only you can see it.'); });
+$('save-draft').onclick = () => runAction(async () => { status('Saving...'); await save(currentStatus); status(currentStatus === 'published' ? 'Changes saved. Run the website update to apply them to your blog.' : 'Draft saved. Only you can see it.'); });
 $('publish').onclick = () => runAction(async () => {
   if (!bodyEl.value.trim()) { status('Write something first.'); return; }
-  if (!await confirmAction('Prepare this post for the next website sync? It may take half an hour or longer to appear.')) return;
+  if (!await confirmAction('Mark this post for publication? Then run the website update on GitHub to make it appear. This button alone does not confirm it is live.')) return;
   status('Saving for publication...');
   await save('published');
-  status('Saved for publication. It appears after the next website sync, usually about half an hour but sometimes longer.');
+  status('Saved for publication, not yet confirmed live. Run the website update on GitHub, wait for its green check, then refresh the blog.');
 });
 
 $('signin').onclick = async () => {
@@ -279,7 +362,7 @@ onAuthStateChanged(auth, user => {
     startLists();
   } else {
     if(stopLists){ stopLists(); stopLists=null; }
-    titleEl.value=''; bodyEl.value=''; currentId=null; currentStatus='draft'; currentPublishedAt=null; dirty=false; refreshPreview();
+    images={};showPhotos();titleEl.value=''; bodyEl.value=''; currentId=null; currentStatus='draft'; currentPublishedAt=null; dirty=false; refreshPreview();
     $('drafts').textContent=''; $('published').textContent=''; $('signout').hidden=true;
     if (user) { signOut(auth); $('gate-error').textContent = 'This account (' + user.email + ') is not the blog owner. Switch Google accounts.'; }
     who.textContent = 'Protected by your Google account.';
