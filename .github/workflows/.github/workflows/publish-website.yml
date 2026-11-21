@@ -1,0 +1,52 @@
+name: Publish website and sync blog
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+  schedule:
+    - cron: '7,37 * * * *'
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+  actions: write
+concurrency:
+  group: website-publication
+  cancel-in-progress: false
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Build public files using published-only reader
+        env:
+          FIREBASE_BUILD_PASSWORD: ${{ secrets.FIREBASE_BUILD_PASSWORD }}
+          FIREBASE_API_KEY: AIzaSyBwr-CipPH5gpPl53EEQpqGzvP8xpq7xeA
+        run: |
+          mkdir _site
+          cp index.html favicon.png _site/
+          cp -R images mananshahre-portfolio _site/
+          python3 tools/sync_posts.py _site/mananshahre-portfolio
+          test ! -e _site/tools
+          test ! -e _site/.github
+      - name: Upload public website only
+        id: artifact
+        uses: actions/upload-pages-artifact@7b1f4a764d45c48632c6b24a0339c27f5614fb0b # v4
+        with:
+          path: _site
+          retention-days: 1
+      - name: Deploy website
+        id: deployment
+        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4
+      - name: Remove temporary deployment artifact
+        if: ${{ always() && steps.artifact.outputs.artifact_id != '' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ARTIFACT_ID: ${{ steps.artifact.outputs.artifact_id }}
+        run: gh api --method DELETE "repos/$GITHUB_REPOSITORY/actions/artifacts/$ARTIFACT_ID"
